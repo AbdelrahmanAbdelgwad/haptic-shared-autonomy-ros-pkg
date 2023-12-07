@@ -115,6 +115,8 @@ def main(
     abs_timestep = 0
     for method in methods_schedule:
         for alpha in alpha_schedule:
+            actions_alpha_var_human = 0
+            actions_alpha_var_agent = 0
             score = 0
             env = CarRacing(
                 allow_reverse=False,
@@ -214,6 +216,7 @@ def main(
                         action = pi_action
                         print("human")
                         human_counter += 1
+                        actions_alpha_var_human += 1
                         action_df = pd.concat([action_df, pd.DataFrame({"human_percent": 1, "agent_percent": 0}, index=[0])], axis=0)
                         # append(  
                         # {"human_percent": 1, "agent_percent": 0}, ignore_index=True)
@@ -221,6 +224,7 @@ def main(
                         action = opt_action
                         print("agent")
                         agent_counter += 1
+                        actions_alpha_var_agent += 1
                         action_df = pd.concat([action_df, pd.DataFrame({"human_percent": 0, "agent_percent": 1}, index=[0])], axis=0)
                         # append(
                         # {"human_percent": 0, "agent_percent": 1}, ignore_index=True)
@@ -277,6 +281,19 @@ def main(
             results[f"{method}_alpha_{alpha}"] = score
             results_df = results_df.append(
                 {"Method": method, "Alpha": alpha, "Score": score}, ignore_index=True
+            )
+            pie_chart_categories = ["human", "agent"]
+            pie_chart_values = [actions_alpha_var_human, actions_alpha_var_agent]
+            percentage_human = round((actions_alpha_var_human / (actions_alpha_var_human + actions_alpha_var_agent)*100),2)
+            percentage_agent = round((actions_alpha_var_agent / (actions_alpha_var_human + actions_alpha_var_agent)*100),2)
+            plt.figure()
+            plt.pie(pie_chart_values, labels=pie_chart_categories)
+            plt.title(f"actions per alpha {alpha}")
+            plt.annotate("human= {} %".format(percentage_human), xy=(0.1, 1), xytext=(0.7, -1.2), color = "black")
+            plt.annotate("agent= {} %".format(percentage_agent), xy=(0.1, 1), xytext=(0.7,-1.4), color = "black")
+            plt.legend(loc="upper left")
+            plt.savefig(
+                f"./data_collected_{trial}/{user_name}/feedback/{method}/pie_chart_for_actions_of_alpha_{alpha}.png"
             )
         feedback_recorder_df = pd.concat([feedback_recorder_df, action_df], axis=1)
         feedback_recorder_df.to_csv(
@@ -340,8 +357,8 @@ def main(
 if __name__ == "__main__":
     methods_schedule = ["RL"]
     alpha_schedule = [0.4, 0.6, 0.8, 1]   
-    total_timesteps = 500
+    total_timesteps = 600
     feedback = True
     user_name = "anas_trial_best_model_Nov_8_nosisy"
-    trial = 16
+    trial = 1
     main(alpha_schedule, total_timesteps, methods_schedule, feedback, user_name, trial)
