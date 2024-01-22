@@ -69,8 +69,16 @@ def cont2disc_steeting(human_steering_action):
         
     return action, action_space
 
-max_size_q = 30
-moving_average_q = Queue(maxsize=max_size_q)
+# max_size_q = 30
+# moving_average_q = Queue(maxsize=max_size_q)
+
+def exp_moving_average(value, pre_value):
+    alpha = 0.5
+    if pre_value == 0:
+        return value
+    else:
+        return alpha * value + (1 - alpha) * pre_value
+    
 
 def get_feedback(human_st_action, opt_action):
 
@@ -79,25 +87,25 @@ def get_feedback(human_st_action, opt_action):
     
     diff = abs(human_steering - opt_steering)
 
-    if moving_average_q.full():
-        moving_average_q.get()
-    else:
-        moving_average_q.put(diff)
+    # if moving_average_q.full():
+    #     moving_average_q.get()
+    # else:
+    #     moving_average_q.put(diff)
+    # feedback_average = np.mean(moving_average_q.queue)
+    # print("feedback_average",feedback_average)
 
 
-    feedback_average = np.mean(moving_average_q.queue)
-    print("feedback_average",feedback_average)
     #if diff is not zero
     max_feedback = 50
-    if feedback_average > 0.2:  
+    if diff > 0.2:  
         if human_steering == 0 and opt_steering == 0:
             return 0
         if opt_action == 0:
-            return map_val(feedback_average, 0, 2, 0, max_feedback) * -int(human_steering / abs(human_steering))
+            return map_val(diff, 0, 2, 0, max_feedback) * -int(human_steering / abs(human_steering))
         elif human_steering == 0:
-            return map_val(feedback_average, 0, 2, 0, max_feedback) * int(opt_steering / abs(opt_steering))
+            return map_val(diff, 0, 2, 0, max_feedback) * int(opt_steering / abs(opt_steering))
         else:
-            return map_val(feedback_average, 0, 2, 0, max_feedback)* (int(opt_steering / abs(opt_steering)))      
+            return map_val(diff, 0, 2, 0, max_feedback)* (int(opt_steering / abs(opt_steering)))      
     else:
         return 0
 
@@ -129,6 +137,7 @@ def main(
     model = DQNCopilot.load("copilot_training_with_2M_0.85_init_eps_best_model", device='cuda')
 
     abs_timestep = 0
+    prevous_action = 0
     for method in methods_schedule:
         for feedback in feedback:
             th.cuda.empty_cache()
@@ -212,6 +221,11 @@ def main(
                     # Now 'new_observation' contains the original frames with the 5th frame appended
 
                     opt_action, _ = model.predict(copilot_obs)
+
+                    if abs (opt_action - prevous_action) > 4:
+                        opt_action = prevous_action+2
+                    prevous_action = opt_action
+
                     print("opt_action",opt_action)
                     if method == "RL":
                         # Assuming 'observation' is a numpy array with shape (96, 96, 4)
@@ -229,22 +243,22 @@ def main(
                         # Pass the copilot_obs tensor to the model
                         q_values = model.policy.q_net.forward(copilot_obs_tensor)
                         q_values -= th.min(q_values)
-                        print("q_values",q_values[0])
+                        # print("q_values",q_values[0])
 
                         pi_action_q_value = q_values[0][pi_action]
                         opt_action_q_value = q_values[0][opt_action]
 
                         if pi_action_q_value >= (1 - alpha) * opt_action_q_value:
                             action = pi_action
-                            print("human")
+                            # print("human")
                             human_counter += 1
                             actions_alpha_var_human += 1
                             action_df = pd.concat([action_df, pd.DataFrame({"human_percent": 1, "agent_percent": 0}, index=[0])], axis=0)
                             # append(  
                             # {"human_percent": 1, "agent_percent": 0}, ignore_index=True)
                         else:
-                            action = opt_action
-                            print("agent")
+                            action = opt_action                          
+                            # print("agent")
                             agent_counter += 1
                             actions_alpha_var_agent += 1
                             action_df = pd.concat([action_df, pd.DataFrame({"human_percent": 0, "agent_percent": 1}, index=[0])], axis=0)
@@ -259,6 +273,7 @@ def main(
                         )
                         action = disc2cont(opt_action)
                         action[0] = action_steering
+
                     observation_, reward, done, info = env.step(action)
                     env.render()
                     score += reward
@@ -266,7 +281,10 @@ def main(
 
                     if True:
                         model_action = disc2cont(opt_action)[0]
+                        prevous_feedback_value = feedback_value
                         feedback_value = int (get_feedback(human_steering_action, model_action))
+                        feedback_value = exp_moving_average(feedback_value, prevous_feedback_value)
+                        prevous_feedback_value = feedback_value
                         #save all feedback values in a csv file with respect to the disc_human_steering_action and opt_action
                         feedback_recorder_df = pd.concat(
                             [feedback_recorder_df, pd.DataFrame({"feedback": feedback_value, "human_action": human_steering_action, 
