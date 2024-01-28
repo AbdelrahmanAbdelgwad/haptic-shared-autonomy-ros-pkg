@@ -1,1 +1,1 @@
-# haptic-shared-autonomy-ros-pkg
+# Haptic-Shared-Autonomy-ROS-pkg
